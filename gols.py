@@ -18,12 +18,15 @@ def main():
     with open(abs_json_path, 'r') as f:
         golsdata = json.load(f)
 
+    # Login to Garmin connect
+    session = login(golsdata['username'], golsdata['password'])
+
     # Call upload for each directory
     for directory in golsdata['directories']:
-        upload(directory, golsdata['username'], golsdata['password'])
+        upload(directory, session)
 
-def upload(directory_fit, username, password):
-    print("Uploading...")
+def login(username, password):
+    print("Logging in...")
 
     WEBHOST = "https://connect.garmin.com"
     REDIRECT = "https://connect.garmin.com/modern/"
@@ -104,10 +107,13 @@ def upload(directory_fit, username, password):
     params_post_auth = {'ticket': login_ticket}
     req_post_auth = s.get(url_gc_post_auth, params=params_post_auth)
     if req_post_auth.status_code != 200:
-        print('issue with {}'.format(
-            req_post_auth))
-    print('Let\'s upload stuff now')
-    # login should be done we upload now
+        raise Exception('issue with {}'.format(req_post_auth))
+    else:
+        print("Login OK")
+        return s
+
+def upload(directory_fit, session):
+    print("Uploading...")
 
     # url_upload = 'https://connect.garmin.com/proxy/upload-service-1.1/json/upload/.fit'
     url_upload = 'https://connect.garmin.com/modern/proxy/upload-service/upload/.fit'
@@ -118,12 +124,16 @@ def upload(directory_fit, username, password):
                               open(os.path.join(directory_fit, filename), 'rb'),
                               'application/octet-stream')
                      }
-            s.headers.update({'Referer': 'https://connect.garmin.com/modern/import-data', 'NK': 'NT'})
-            req5 = s.post(url_upload, files=files)
-            if req5.status_code != 201:
+            session.headers.update({'Referer': 'https://connect.garmin.com/modern/import-data', 'NK': 'NT'})
+            req5 = session.post(url_upload, files=files)
+            # Succesful status code is 201 Created for activity and 202 Accepted for wellness files
+            success_codes = [201, 202]
+            if req5.status_code not in success_codes:
                 print(
                     'issue with {}'.format(
                         req5))
+            else:
+                print("Succesfully uploaded {}".format(filename))
 
             # fn = req5.json()['detailedImportResult']['fileName']
             if 'failures' in req5.json()['detailedImportResult']:
